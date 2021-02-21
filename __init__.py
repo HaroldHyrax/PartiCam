@@ -16,6 +16,32 @@ bl_info = {
 
 def main(context, margin, max_dist_ratio, min_dist_ratio, is_gradient):
     scene = bpy.context.scene
+    max_dist = 0
+    min_dist = 0
+    for obj in bpy.context.selected_objects:
+        if obj.type == "MESH" and len(obj.particle_systems) > 0:
+            cameras = [ob for ob in bpy.context.selected_objects if ob.type == "CAMERA"]
+            cam_group_name = "_".join([cam.name for cam in cameras])
+
+            cam_vert_group = None
+
+            for vert_group in obj.vertex_groups:
+                if vert_group.name == cam_group_name:
+                    cam_vert_group = vert_group
+            if cam_vert_group is None:
+                cam_vert_group = obj.vertex_groups.new(name=cam_group_name)
+
+            for vert in obj.data.vertices:
+                cam_vert_group.add([vert.index], 0.0, "REPLACE")
+                for camera in cameras:
+                    cam_ndc = bpy_extras.object_utils.world_to_camera_view(
+                        scene, camera, obj.matrix_world @ vert.co
+                    )
+                    if cam_ndc[2] > max_dist:
+                        max_dist = cam_ndc[2]
+                    elif cam_ndc[2] < min_dist:
+                        min_dist = cam_ndc[2]
+
     for obj in bpy.context.selected_objects:
 
         if obj.type == "MESH" and len(obj.particle_systems) > 0:
@@ -29,20 +55,6 @@ def main(context, margin, max_dist_ratio, min_dist_ratio, is_gradient):
                     cam_vert_group = vert_group
             if cam_vert_group is None:
                 cam_vert_group = obj.vertex_groups.new(name=cam_group_name)
-
-            max_dist = 0
-            min_dist = 0
-
-            for vert in obj.data.vertices:
-                cam_vert_group.add([vert.index], 0.0, "REPLACE")
-                for camera in cameras:
-                    cam_ndc = bpy_extras.object_utils.world_to_camera_view(
-                        scene, camera, obj.matrix_world @ vert.co
-                    )
-                    if cam_ndc[2] > max_dist:
-                        max_dist = cam_ndc[2]
-                    elif cam_ndc[2] < min_dist:
-                        min_dist = cam_ndc[2]
 
             for vert in obj.data.vertices:
                 for camera in cameras:
@@ -60,8 +72,11 @@ def main(context, margin, max_dist_ratio, min_dist_ratio, is_gradient):
                         if is_gradient:
                             cam_vert_group.add(
                                 [vert.index],
-                                1 - ((cam_ndc[2] - (max_dist * min_dist_ratio))
-                                / (max_dist * max_dist_ratio)),
+                                1
+                                - (
+                                    (cam_ndc[2] - (max_dist * min_dist_ratio))
+                                    / (max_dist * max_dist_ratio)
+                                ),
                                 "ADD",
                             )
                         else:
